@@ -60,7 +60,8 @@ jobs:
             "memory": 512,
             "cpu": 256
           }]')
-        echo "::set-output name=task-definition-arn::$(echo $TASK_DEFINITION | jq -r '.taskDefinition.taskDefinitionArn')"
+        echo "TASK_DEFINITION=$(cat task-definition.json)" >> $GITHUB_ENV
+
 
     - name: Update ECS service with new task definition
       run: |
