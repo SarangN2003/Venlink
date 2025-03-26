@@ -26,15 +26,15 @@ jobs:
 
     - name: Build Docker image
       run: |
-        docker build -t venlink .
+        docker build -t ${{ secrets.ECR_REPOSITORY_NAME }} .
 
     - name: Tag Docker image
       run: |
-        docker tag venlink:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:latest
+        docker tag ${{ secrets.ECR_REPOSITORY_NAME }}:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest
 
     - name: Push Docker image to Amazon ECR
       run: |
-        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:latest
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest
 
   deploy:
     runs-on: ubuntu-latest
@@ -53,14 +53,15 @@ jobs:
       run: |
         TASK_DEFINITION=$(aws ecs register-task-definition \
           --family ${{ secrets.TASK_DEFINITION_NAME }} \
-          --execution-role-arn arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/VenlinkFargateRole \
+          --task-role-arn arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/VenlinkFargateRole \
+          --execution-role-arn arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecsTaskExecutionRole \
           --network-mode awsvpc \
           --requires-compatibilities FARGATE \
           --cpu 256 \
           --memory 512 \
           --container-definitions '[{
-            "name": "venlinktaskcontainer",
-            "image": "'${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:latest'",
+            "name": "'${{ secrets.CONTAINER_NAME }}'",
+            "image": "'${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest'",
             "essential": true,
             "memory": 512,
             "cpu": 256
