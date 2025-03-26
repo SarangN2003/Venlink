@@ -3,7 +3,7 @@ name: Deploy to AWS Fargate
 on:
   push:
     branches:
-      - master
+      - master  # Trigger the action on push to the master branch
 
 jobs:
   build:
@@ -54,29 +54,26 @@ jobs:
         TASK_DEFINITION=$(aws ecs register-task-definition \
           --family ${{ secrets.TASK_DEFINITION_NAME }} \
           --network-mode awsvpc \
+          --requires-compatibilities FARGATE \
           --execution-role-arn arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecsTaskExecutionRole \
+          --cpu "512" \
+          --memory "1024" \
           --container-definitions '[{
-            "name": "venlink-container",
-            "image": "'${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest'",
+            "name": "${{ secrets.ECR_REPOSITORY_NAME }}",
+            "image": "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest",
             "essential": true,
-            "memory": 512,
-            "cpu": 256
-          }]')
+            "memory": 1024,
+            "cpu": 512
+          }]' )
         echo "TASK_DEFINITION_ARN=$(echo $TASK_DEFINITION | jq -r '.taskDefinition.taskDefinitionArn')" >> $GITHUB_ENV
-
-    - name: Check if ECS_SERVICE_NAME is set
-      run: |
-        if [ -z "${{ secrets.ECS_SERVICE_NAME }}" ]; then
-          echo "Error: ECS_SERVICE_NAME secret is missing!"
-          exit 1
-        fi
 
     - name: Update ECS service with new task definition
       run: |
         aws ecs update-service \
           --cluster ${{ secrets.CLUSTER_NAME }} \
           --service ${{ secrets.ECS_SERVICE_NAME }} \
-          --task-definition ${{ env.TASK_DEFINITION_ARN }}
+          --task-definition ${{ env.TASK_DEFINITION_ARN }} \
+          --force-new-deployment
 
     - name: Wait for ECS service to stabilize
       run: |
