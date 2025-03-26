@@ -71,7 +71,7 @@ jobs:
           --family $TASK_DEFINITION_NAME \
           --execution-role-arn $TASK_EXECUTION_ROLE \
           --task-role-arn $TASK_ROLE \
-          --container-definitions "[{\"name\":\"my-container\",\"image\":\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest\",\"essential\":true,\"memory\":512,\"cpu\":256,\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"/ecs/${{ secrets.ECS_SERVICE_NAME }}\",\"awslogs-region\":\"${{ secrets.AWS_REGION }}\",\"awslogs-stream-prefix\":\"ecs\"}}}]" \
+          --container-definitions "[{\"name\":\"my-container\",\"image\":\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest\",\"essential\":true,\"memory\":512,\"cpu\":256,\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"/ecs/${{ secrets.ECS_SERVICE_NAME | replace(' ', '-') }}\",\"awslogs-region\":\"${{ secrets.AWS_REGION }}\",\"awslogs-stream-prefix\":\"ecs\"}}}]" \
           --requires-compatibilities FARGATE \
           --network-mode awsvpc \
           --cpu "256" \
@@ -96,14 +96,14 @@ jobs:
     - name: Fetch logs from CloudWatch for ECS task
       run: |
         LOG_STREAM=$(aws logs describe-log-streams \
-          --log-group-name /ecs/$ECS_SERVICE_NAME \
+          --log-group-name /ecs/${{ secrets.ECS_SERVICE_NAME | replace(' ', '-') }} \
           --order-by "LastEventTime" \
           --limit 1 \
           --query "logStreams[0].logStreamName" \
           --output text)
         
         aws logs get-log-events \
-          --log-group-name /ecs/$ECS_SERVICE_NAME \
+          --log-group-name /ecs/${{ secrets.ECS_SERVICE_NAME | replace(' ', '-') }} \
           --log-stream-name $LOG_STREAM \
           --limit 10 \
           --query "events[*].message" \
