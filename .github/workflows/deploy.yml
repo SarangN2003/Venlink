@@ -3,7 +3,7 @@ name: Deploy to AWS Fargate
 on:
   push:
     branches:
-      - master  # Trigger the action on push to the main branch
+      - master  # Trigger the action on push to the master branch
 
 jobs:
   build:
@@ -49,6 +49,7 @@ jobs:
         aws-region: ${{ secrets.AWS_REGION }}
 
     - name: Register new ECS task definition
+      id: register-task-definition
       run: |
         TASK_DEFINITION=$(aws ecs register-task-definition \
           --family ${{ secrets.TASK_DEFINITION_NAME }} \
@@ -60,18 +61,17 @@ jobs:
             "memory": 512,
             "cpu": 256
           }]')
-        echo "TASK_DEFINITION=$(cat task-definition.json)" >> $GITHUB_ENV
-
+        echo "TASK_DEFINITION_ARN=$(echo $TASK_DEFINITION | jq -r '.taskDefinition.taskDefinitionArn')" >> $GITHUB_ENV
 
     - name: Update ECS service with new task definition
       run: |
         aws ecs update-service \
           --cluster ${{ secrets.CLUSTER_NAME }} \
-          --service ${{ secrets.TASK_DEFINITION_NAME }} \
-          --task-definition ${{ steps.register-task-definition.outputs.task-definition-arn }}
+          --service ${{ secrets.ECS_SERVICE_NAME }} \
+          --task-definition ${{ env.TASK_DEFINITION_ARN }}
 
     - name: Wait for ECS service to stabilize
       run: |
         aws ecs wait services-stable \
           --cluster ${{ secrets.CLUSTER_NAME }} \
-          --services ${{ secrets.TASK_DEFINITION_NAME }}
+          --services ${{ secrets.ECS_SERVICE_NAME }}
