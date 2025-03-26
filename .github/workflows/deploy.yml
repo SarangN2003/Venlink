@@ -45,6 +45,8 @@ jobs:
       CLUSTER_NAME: "VenlinkLogin"  # Correct ECS Cluster Name
       ECS_SERVICE_NAME: "venlinkservices"  # Correct ECS Service Name
       TASK_DEFINITION_NAME: "VenlinkTask"  # Task Definition Family Name (without revision)
+      TASK_ROLE_ARN: "arn:aws:iam::203918861989:role/VenlinkFargateRole"  # Task Role ARN
+      EXECUTION_ROLE_ARN: "arn:aws:iam::203918861989:role/ecsTaskExecutionRole"  # Task Execution Role ARN
 
     steps:
     - name: Set up AWS CLI
@@ -54,14 +56,25 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Get latest task definition revision
+    - name: Get latest task definition
       id: get-task-definition
       run: |
-        LATEST_TASK_DEF_ARN=$(aws ecs describe-task-definition \
-          --task-definition $TASK_DEFINITION_NAME \
-          --query 'taskDefinition.taskDefinitionArn' \
-          --output text)
-        echo "TASK_DEF_ARN=$LATEST_TASK_DEF_ARN" >> $GITHUB_ENV
+        LATEST_TASK_DEF=$(aws ecs describe-task-definition --task-definition $TASK_DEFINITION_NAME)
+        echo "$LATEST_TASK_DEF" > task-def.json
+
+    - name: Register new task definition with updated roles
+      id: register-task-def
+      run: |
+        NEW_TASK_DEF=$(jq '.taskDefinition | del(.taskDefinitionArn, .revision, .status, .registeredAt, .registeredBy) |
+          .taskRoleArn = env.TASK_ROLE_ARN | 
+          .executionRoleArn = env.EXECUTION_ROLE_ARN' task-def.json)
+
+        echo "$NEW_TASK_DEF" > new-task-def.json
+
+        REGISTERED_TASK_DEF=$(aws ecs register-task-definition --cli-input-json file://new-task-def.json)
+        TASK_DEF_ARN=$(echo "$REGISTERED_TASK_DEF" | jq -r '.taskDefinition.taskDefinitionArn')
+
+        echo "TASK_DEF_ARN=$TASK_DEF_ARN" >> $GITHUB_ENV
 
     - name: Update ECS service with new task definition
       run: |
