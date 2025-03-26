@@ -3,7 +3,7 @@ name: Deploy to AWS Fargate
 on:
   push:
     branches:
-      - master
+      - master  # Trigger the action on push to the master branch
 
 jobs:
   build:
@@ -60,27 +60,37 @@ jobs:
           --cpu "256" \
           --memory "512" \
           --container-definitions '[{
-            "name": "${{ secrets.CONTAINER_NAME }}",
-            "image": "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest",
+            "name": "'${{ secrets.CONTAINER_NAME }}'",
+            "image": "'${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest'",
             "essential": true,
-            "memory": 512,
-            "cpu": 256,
-            "networkMode": "awsvpc"
-          }]' )
+            "portMappings": [{
+              "containerPort": 80,
+              "hostPort": 80
+            }],
+            "logConfiguration": {
+              "logDriver": "awslogs",
+              "options": {
+                "awslogs-group": "/ecs/${{ secrets.TASK_DEFINITION_NAME }}",
+                "awslogs-region": "${{ secrets.AWS_REGION }}",
+                "awslogs-stream-prefix": "ecs"
+              }
+            }
+          }]')
         echo "TASK_DEFINITION_ARN=$(echo $TASK_DEFINITION | jq -r '.taskDefinition.taskDefinitionArn')" >> $GITHUB_ENV
 
-    - name: Create ECS service
+    - name: Create new ECS service
       run: |
         aws ecs create-service \
           --cluster ${{ secrets.CLUSTER_NAME }} \
           --service-name ${{ secrets.ECS_SERVICE_NAME }} \
           --task-definition ${{ env.TASK_DEFINITION_ARN }} \
           --launch-type FARGATE \
-          --desired-count 1 \
-          --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxxx],securityGroups=[sg-xxxxxx],assignPublicIp=ENABLED}"
+          --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxxxxx,subnet-yyyyyyyy],securityGroups=[sg-zzzzzzzz],assignPublicIp=ENABLED}" \
+          --desired-count 1
 
     - name: Wait for ECS service to stabilize
       run: |
         aws ecs wait services-stable \
           --cluster ${{ secrets.CLUSTER_NAME }} \
           --services ${{ secrets.ECS_SERVICE_NAME }}
+
