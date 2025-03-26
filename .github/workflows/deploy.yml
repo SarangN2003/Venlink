@@ -63,21 +63,6 @@ jobs:
           --output text)
         echo "TASK_DEF_ARN=$LATEST_TASK_DEF_ARN" >> $GITHUB_ENV
 
-    - name: Modify task definition with correct roles
-      id: update-task-definition
-      run: |
-        NEW_TASK_DEF=$(aws ecs describe-task-definition --task-definition $TASK_DEFINITION_NAME --region ${{ secrets.AWS_REGION }} | jq '.taskDefinition | 
-          del(.taskDefinitionArn, .revision, .status, .registeredAt, .registeredBy, .requiresAttributes, .compatibilities) |
-          .taskRoleArn = "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/VenlinkFargateRole" |
-          .executionRoleArn = "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecsTaskExecutionRole"')
-        echo "$NEW_TASK_DEF" > updated-task-def.json
-
-    - name: Register the new task definition
-      run: |
-        aws ecs register-task-definition \
-          --cli-input-json file://updated-task-def.json \
-          --region ${{ secrets.AWS_REGION }}
-
     - name: Update ECS service with new task definition
       run: |
         aws ecs update-service \
@@ -92,3 +77,8 @@ jobs:
           --cluster $CLUSTER_NAME \
           --services $ECS_SERVICE_NAME \
           --region ${{ secrets.AWS_REGION }}
+
+    - name: Run tests and capture output
+      run: |
+        echo "Starting test execution..."
+        pytest --maxfail=1 --disable-warnings --capture=tee-sys
