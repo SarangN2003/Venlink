@@ -64,13 +64,15 @@ jobs:
           }]')
         echo "TASK_DEFINITION_ARN=$(echo $TASK_DEFINITION | jq -r '.taskDefinition.taskDefinitionArn')" >> $GITHUB_ENV
 
-    - name: Update ECS service with new task definition
+    - name: Check if ECS_SERVICE_NAME is set
       run: |
         if [ -z "${{ secrets.ECS_SERVICE_NAME }}" ]; then
           echo "Error: ECS_SERVICE_NAME secret is missing!"
           exit 1
         fi
 
+    - name: Update ECS service with new task definition
+      run: |
         aws ecs update-service \
           --cluster ${{ secrets.CLUSTER_NAME }} \
           --service ${{ secrets.ECS_SERVICE_NAME }} \
