@@ -65,7 +65,7 @@ jobs:
           --output text)
         echo "TASK_DEF_ARN=$LATEST_TASK_DEF_ARN" >> $GITHUB_ENV
 
-    - name: Register new task definition with roles
+    - name: Register new task definition with roles and awsvpc network mode
       run: |
         aws ecs register-task-definition \
           --family $TASK_DEFINITION_NAME \
@@ -73,6 +73,7 @@ jobs:
           --task-role-arn $TASK_ROLE \
           --container-definitions "[{\"name\":\"my-container\",\"image\":\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest\",\"essential\":true,\"memory\":512,\"cpu\":256}]" \
           --requires-compatibilities FARGATE \
+          --network-mode awsvpc \
           --cpu "256" \
           --memory "512" \
           --region ${{ secrets.AWS_REGION }}
