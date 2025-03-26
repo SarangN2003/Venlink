@@ -65,14 +65,24 @@ jobs:
           --output text)
         echo "TASK_DEF_ARN=$LATEST_TASK_DEF_ARN" >> $GITHUB_ENV
 
+    - name: Register new task definition with roles
+      run: |
+        aws ecs register-task-definition \
+          --family $TASK_DEFINITION_NAME \
+          --execution-role-arn $TASK_EXECUTION_ROLE \
+          --task-role-arn $TASK_ROLE \
+          --container-definitions "[{\"name\":\"my-container\",\"image\":\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest\",\"essential\":true,\"memory\":512,\"cpu\":256}]" \
+          --requires-compatibilities FARGATE \
+          --cpu "256" \
+          --memory "512" \
+          --region ${{ secrets.AWS_REGION }}
+
     - name: Update ECS service with new task definition
       run: |
         aws ecs update-service \
           --cluster $CLUSTER_NAME \
           --service $ECS_SERVICE_NAME \
           --task-definition $TASK_DEF_ARN \
-          --role $TASK_ROLE \
-          --execution-role $TASK_EXECUTION_ROLE \
           --region ${{ secrets.AWS_REGION }}
 
     - name: Wait for ECS service to stabilize
