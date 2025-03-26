@@ -2,15 +2,15 @@ name: Deploy to Amazon ECS
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
 
 env:
-  AWS_REGION: eu-north-1  # Set your AWS region
-  ECR_REPOSITORY: venlink  # Your Amazon ECR repository name
-  ECS_SERVICE: VenLinkservices  # Your ECS service name
-  ECS_CLUSTER: VenlinkLogin  # Your ECS cluster name
-  ECS_TASK_DEFINITION: .aws/task-definition.json  # Corrected path to task definition file
-  CONTAINER_NAME: venlinktaskcontainer  # Container name in task definition
+  AWS_REGION: eu-north-1
+  ECR_REPOSITORY: venlink
+  ECS_SERVICE: VenLinkservices
+  ECS_CLUSTER: VenlinkLogin
+  ECS_TASK_DEFINITION: .aws/task-definition.json  # Using JSON file instead of ARN
+  CONTAINER_NAME: venlinktaskcontainer
 
 permissions:
   contents: read
@@ -22,11 +22,11 @@ jobs:
     environment: production
 
     steps:
-    - name: Checkout Repository
+    - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v1
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -36,18 +36,17 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Build, Tag, and Push Image to Amazon ECR
+    - name: Build, tag, and push image to Amazon ECR
       id: build-image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        echo "Building Docker image..."
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "IMAGE=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
+        echo "IMAGE=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV  # Updated for environment file
 
-    - name: Fill in the New Image ID in the ECS Task Definition
+    - name: Fill in the new image ID in the Amazon ECS task definition
       id: task-def
       uses: aws-actions/amazon-ecs-render-task-definition@v1
       with:
@@ -55,15 +54,10 @@ jobs:
         container-name: ${{ env.CONTAINER_NAME }}
         image: ${{ env.IMAGE }}
 
-    - name: Deploy Updated Amazon ECS Task Definition
+    - name: Deploy Amazon ECS task definition
       uses: aws-actions/amazon-ecs-deploy-task-definition@v1
       with:
         task-definition: ${{ steps.task-def.outputs.task-definition }}
         service: ${{ env.ECS_SERVICE }}
         cluster: ${{ env.ECS_CLUSTER }}
         wait-for-service-stability: true
-
-    - name: Verify ECS Service Deployment
-      run: |
-        echo "Checking ECS Service Status..."
-        aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_REGION
