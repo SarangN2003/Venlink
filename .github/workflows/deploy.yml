@@ -3,7 +3,7 @@ name: Deploy to AWS Fargate
 on:
   push:
     branches:
-      - master  # Trigger the action on push to the master branch
+      - master  # Trigger on push to master
 
 jobs:
   build:
@@ -26,11 +26,11 @@ jobs:
 
     - name: Build Docker image
       run: |
-        docker build -t ${{ secrets.ECR_REPOSITORY_NAME }} .
+        docker build -t ${{ secrets.CONTAINER_NAME }} .
 
     - name: Tag Docker image
       run: |
-        docker tag ${{ secrets.ECR_REPOSITORY_NAME }}:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest
+        docker tag ${{ secrets.CONTAINER_NAME }}:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest
 
     - name: Push Docker image to Amazon ECR
       run: |
@@ -53,18 +53,18 @@ jobs:
       run: |
         TASK_DEFINITION=$(aws ecs register-task-definition \
           --family ${{ secrets.TASK_DEFINITION_NAME }} \
+          --execution-role-arn arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/VenlinkFargateRole \
           --network-mode awsvpc \
           --requires-compatibilities FARGATE \
-          --execution-role-arn arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecsTaskExecutionRole \
-          --cpu "512" \
-          --memory "1024" \
+          --cpu 256 \
+          --memory 512 \
           --container-definitions '[{
-            "name": "${{ secrets.ECR_REPOSITORY_NAME }}",
-            "image": "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest",
+            "name": "'${{ secrets.CONTAINER_NAME }}'",
+            "image": "'${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest'",
             "essential": true,
-            "memory": 1024,
-            "cpu": 512
-          }]' )
+            "memory": 512,
+            "cpu": 256
+          }]')
         echo "TASK_DEFINITION_ARN=$(echo $TASK_DEFINITION | jq -r '.taskDefinition.taskDefinitionArn')" >> $GITHUB_ENV
 
     - name: Update ECS service with new task definition
@@ -72,8 +72,7 @@ jobs:
         aws ecs update-service \
           --cluster ${{ secrets.CLUSTER_NAME }} \
           --service ${{ secrets.ECS_SERVICE_NAME }} \
-          --task-definition ${{ env.TASK_DEFINITION_ARN }} \
-          --force-new-deployment
+          --task-definition ${{ env.TASK_DEFINITION_ARN }}
 
     - name: Wait for ECS service to stabilize
       run: |
