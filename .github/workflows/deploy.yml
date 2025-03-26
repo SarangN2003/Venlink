@@ -53,12 +53,12 @@ jobs:
     - name: Update ECS service with new task definition
       run: |
         aws ecs update-service \
-          --cluster ${{ secrets.CLUSTER_NAME }} \
-          --service ${{ secrets.ECS_SERVICE_NAME }} \
-          --task-definition $TASK_DEF_ARN
+          --cluster "${{ secrets.CLUSTER_NAME }}" \
+          --service "${{ secrets.ECS_SERVICE_NAME }}" \
+          --task-definition "$TASK_DEF_ARN"
 
     - name: Wait for ECS service to stabilize
       run: |
         aws ecs wait services-stable \
-          --cluster ${{ secrets.CLUSTER_NAME }} \
-          --services ${{ secrets.ECS_SERVICE_NAME }}
+          --cluster "${{ secrets.CLUSTER_NAME }}" \
+          --services "${{ secrets.ECS_SERVICE_NAME }}"
