@@ -26,15 +26,15 @@ jobs:
 
     - name: Build Docker image
       run: |
-        docker build -t ${{ secrets.CONTAINER_NAME }} .
+        docker build -t venlink .
 
     - name: Tag Docker image
       run: |
-        docker tag ${{ secrets.CONTAINER_NAME }}:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest
+        docker tag venlink:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:latest
 
     - name: Push Docker image to Amazon ECR
       run: |
-        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:latest
 
   deploy:
     runs-on: ubuntu-latest
@@ -59,8 +59,8 @@ jobs:
           --cpu 256 \
           --memory 512 \
           --container-definitions '[{
-            "name": "'${{ secrets.CONTAINER_NAME }}'",
-            "image": "'${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest'",
+            "name": "venlinktaskcontainer",
+            "image": "'${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:latest'",
             "essential": true,
             "memory": 512,
             "cpu": 256
