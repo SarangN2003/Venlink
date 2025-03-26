@@ -3,7 +3,7 @@ name: Deploy to AWS Fargate
 on:
   push:
     branches:
-      - master  # Trigger the action on push to the master branch
+      - master
 
 jobs:
   build:
@@ -54,8 +54,9 @@ jobs:
         TASK_DEFINITION=$(aws ecs register-task-definition \
           --family ${{ secrets.TASK_DEFINITION_NAME }} \
           --network-mode awsvpc \
+          --execution-role-arn arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecsTaskExecutionRole \
           --container-definitions '[{
-            "name": "'${{ secrets.ECR_REPOSITORY_NAME }}'",
+            "name": "venlink-container",
             "image": "'${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest'",
             "essential": true,
             "memory": 512,
@@ -65,6 +66,11 @@ jobs:
 
     - name: Update ECS service with new task definition
       run: |
+        if [ -z "${{ secrets.ECS_SERVICE_NAME }}" ]; then
+          echo "Error: ECS_SERVICE_NAME secret is missing!"
+          exit 1
+        fi
+
         aws ecs update-service \
           --cluster ${{ secrets.CLUSTER_NAME }} \
           --service ${{ secrets.ECS_SERVICE_NAME }} \
