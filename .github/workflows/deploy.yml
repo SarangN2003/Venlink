@@ -71,7 +71,7 @@ jobs:
           --family $TASK_DEFINITION_NAME \
           --execution-role-arn $TASK_EXECUTION_ROLE \
           --task-role-arn $TASK_ROLE \
-          --container-definitions "[{\"name\":\"my-container\",\"image\":\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest\",\"essential\":true,\"memory\":512,\"cpu\":256}]" \
+          --container-definitions "[{\"name\":\"my-container\",\"image\":\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest\",\"essential\":true,\"memory\":512,\"cpu\":256,\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"/ecs/${{ secrets.ECS_SERVICE_NAME }}\",\"awslogs-region\":\"${{ secrets.AWS_REGION }}\",\"awslogs-stream-prefix\":\"ecs\"}}}]" \
           --requires-compatibilities FARGATE \
           --network-mode awsvpc \
           --cpu "256" \
