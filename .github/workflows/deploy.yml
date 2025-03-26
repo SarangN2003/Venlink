@@ -3,7 +3,7 @@ name: Deploy to AWS Fargate
 on:
   push:
     branches:
-      - master  # Trigger the action on push to the master branch
+      - master
 
 jobs:
   build:
@@ -48,12 +48,36 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Update ECS service with existing task definition
+    - name: Register new ECS task definition
+      id: register-task-definition
       run: |
-        aws ecs update-service \
+        TASK_DEFINITION=$(aws ecs register-task-definition \
+          --family ${{ secrets.TASK_DEFINITION_NAME }} \
+          --execution-role-arn arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecsTaskExecutionRole \
+          --task-role-arn arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/VenlinkFargateRole \
+          --network-mode awsvpc \
+          --requires-compatibilities FARGATE \
+          --cpu "256" \
+          --memory "512" \
+          --container-definitions '[{
+            "name": "${{ secrets.CONTAINER_NAME }}",
+            "image": "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_NAME }}:latest",
+            "essential": true,
+            "memory": 512,
+            "cpu": 256,
+            "networkMode": "awsvpc"
+          }]' )
+        echo "TASK_DEFINITION_ARN=$(echo $TASK_DEFINITION | jq -r '.taskDefinition.taskDefinitionArn')" >> $GITHUB_ENV
+
+    - name: Create ECS service
+      run: |
+        aws ecs create-service \
           --cluster ${{ secrets.CLUSTER_NAME }} \
-          --service ${{ secrets.ECS_SERVICE_NAME }} \
-          --task-definition VenlinkTask:30
+          --service-name ${{ secrets.ECS_SERVICE_NAME }} \
+          --task-definition ${{ env.TASK_DEFINITION_ARN }} \
+          --launch-type FARGATE \
+          --desired-count 1 \
+          --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxxx],securityGroups=[sg-xxxxxx],assignPublicIp=ENABLED}"
 
     - name: Wait for ECS service to stabilize
       run: |
