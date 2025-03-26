@@ -60,6 +60,8 @@ jobs:
       run: |
         ECS_SERVICE_NAME_REPLACED=$(echo "${{ secrets.ECS_SERVICE_NAME }}" | tr ' ' '-')
         echo "ECS_SERVICE_NAME_REPLACED=$ECS_SERVICE_NAME_REPLACED" >> $GITHUB_ENV
+        echo "Cluster Name: $CLUSTER_NAME"  # Debugging output
+        echo "ECS Service Name: $ECS_SERVICE_NAME_REPLACED"  # Debugging output
 
     - name: Get latest task definition revision
       id: get-task-definition
@@ -85,6 +87,7 @@ jobs:
 
     - name: Update ECS service with new task definition
       run: |
+        echo "Updating ECS Service with Task Definition ARN: $TASK_DEF_ARN"
         aws ecs update-service \
           --cluster $CLUSTER_NAME \
           --service $ECS_SERVICE_NAME_REPLACED \
