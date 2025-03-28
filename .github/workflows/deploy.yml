@@ -3,7 +3,7 @@ name: Deploy to AWS Fargate
 on:
   push:
     branches:
-      - master  # Trigger the action on push to the master branch
+      - master
 
 jobs:
   build:
@@ -11,108 +11,92 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3  # Updated to v3
 
-    - name: Set up AWS CLI
-      uses: aws-actions/configure-aws-credentials@v1
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2  # Updated to v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+        aws-region: ${{ secrets.AWS_REGION }}  # Note: Matches your secret name (typo preserved)
 
-    - name: Log in to Amazon ECR
-      run: |
-        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-        docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+    - name: Login to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v1  # More secure than CLI login
 
-    - name: Build Docker image
+    - name: Build, tag, and push Docker image
       run: |
-        docker build -t containervenlink .
-
-    - name: Tag Docker image
-      run: |
-        docker tag containervenlink:latest \
-        ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:containervenlink
-
-    - name: Push Docker image to Amazon ECR
-      run: |
-        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:containervenlink
+        docker build -t ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:${{ github.sha }} .
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:${{ github.sha }}
+        echo "IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:${{ github.sha }}" >> $GITHUB_ENV
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
     env:
-      CLUSTER_NAME: ${{ secrets.CLUSTER_NAME }}  # Correct ECS Cluster Name
-      ECS_SERVICE_NAME: ${{ secrets.ECS_SERVICE_NAME }}  # Correct ECS Service Name
-      TASK_DEFINITION_NAME: ${{ secrets.TASK_DEFINITION_NAME }}  # Task Definition Family Name (without revision)
-      TASK_ROLE: ${{ secrets.TASK_ROLE }}  # Task Role ARN
-      TASK_EXECUTION_ROLE: ${{ secrets.TASK_EXECUTION_ROLE }}  # Task Execution Role ARN
+      CLUSTER_NAME: ${{ secrets.CLUSTER_NAME }}
+      ECS_SERVICE_NAME: ${{ secrets.ECS_SERVICE_NAME }}
+      TASK_DEFINITION_NAME: ${{ secrets.TASK_DEFINITION_NAME }}
+      TASK_ROLE_ARN: ${{ secrets.TASK_ROLE }}
+      TASK_EXECUTION_ROLE_ARN: ${{ secrets.TASK_EXECUTION_ROLE }}
 
     steps:
-    - name: Set up AWS CLI
-      uses: aws-actions/configure-aws-credentials@v1
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Replace spaces in service name with hyphens
+    - name: Sanitize service name
       run: |
-        ECS_SERVICE_NAME_REPLACED=$(echo "${{ secrets.ECS_SERVICE_NAME }}" | tr ' ' '-')
-        echo "ECS_SERVICE_NAME_REPLACED=$ECS_SERVICE_NAME_REPLACED" >> $GITHUB_ENV
-        echo "Cluster Name: $CLUSTER_NAME"  # Debugging output
-        echo "ECS Service Name: $ECS_SERVICE_NAME_REPLACED"  # Debugging output
+        ECS_SERVICE_NAME_CLEAN=$(echo "$ECS_SERVICE_NAME" | tr ' ' '-' | tr '/' '-')
+        echo "ECS_SERVICE_NAME_CLEAN=$ECS_SERVICE_NAME_CLEAN" >> $GITHUB_ENV
 
-    - name: Get latest task definition revision
+    - name: Get current task definition
       id: get-task-definition
       run: |
-        LATEST_TASK_DEF_ARN=$(aws ecs describe-task-definition \
+        TASK_DEF_ARN=$(aws ecs describe-task-definition \
           --task-definition $TASK_DEFINITION_NAME \
           --query 'taskDefinition.taskDefinitionArn' \
           --output text)
-        echo "TASK_DEF_ARN=$LATEST_TASK_DEF_ARN" >> $GITHUB_ENV
+        echo "TASK_DEF_ARN=$TASK_DEF_ARN" >> $GITHUB_ENV
 
-    - name: Register new task definition with roles and awsvpc network mode
+    - name: Register new task definition
       run: |
         aws ecs register-task-definition \
           --family $TASK_DEFINITION_NAME \
-          --execution-role-arn $TASK_EXECUTION_ROLE \
-          --task-role-arn $TASK_ROLE \
-          --container-definitions "[{\"name\":\"containervenlink\",\"image\":\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:containervenlink\",\"essential\":true,\"memory\":512,\"cpu\":256,\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"/ecs/$ECS_SERVICE_NAME_REPLACED\",\"awslogs-region\":\"${{ secrets.AWS_REGION }}\",\"awslogs-stream-prefix\":\"ecs\"}}}]" \
-          --requires-compatibilities FARGATE \
+          --execution-role-arn $TASK_EXECUTION_ROLE_ARN \
+          --task-role-arn $TASK_ROLE_ARN \
           --network-mode awsvpc \
-          --cpu "256" \
-          --memory "512" \
-          --region ${{ secrets.AWS_REGION }}
+          --cpu 256 \
+          --memory 512 \
+          --requires-compatibilities FARGATE \
+          --container-definitions '[
+            {
+              "name": "containervenlink",
+              "image": "${{ env.IMAGE_URI }}",
+              "essential": true,
+              "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-group": "/ecs/$ECS_SERVICE_NAME_CLEAN",
+                  "awslogs-region": "${{ secrets.AWS_REGION }}",
+                  "awslogs-stream-prefix": "ecs"
+                }
+              }
+            }
+          ]'
 
-    - name: Update ECS service with new task definition
+    - name: Deploy to ECS
       run: |
-        echo "Updating ECS Service with Task Definition ARN: $TASK_DEF_ARN"
         aws ecs update-service \
           --cluster $CLUSTER_NAME \
-          --service $ECS_SERVICE_NAME_REPLACED \
-          --task-definition $TASK_DEF_ARN \
-          --region ${{ secrets.AWS_REGION }}
+          --service $ECS_SERVICE_NAME_CLEAN \
+          --task-definition $TASK_DEFINITION_NAME \
+          --force-new-deployment
 
-    - name: Wait for ECS service to stabilize
+    - name: Wait for service stabilization
       run: |
         aws ecs wait services-stable \
           --cluster $CLUSTER_NAME \
-          --services $ECS_SERVICE_NAME_REPLACED \
-          --region ${{ secrets.AWS_REGION }}
-
-    - name: Fetch logs from CloudWatch for ECS task
-      run: |
-        LOG_STREAM=$(aws logs describe-log-streams \
-          --log-group-name /ecs/$ECS_SERVICE_NAME_REPLACED \
-          --order-by "LastEventTime" \
-          --limit 1 \
-          --query "logStreams[0].logStreamName" \
-          --output text)
-        
-        aws logs get-log-events \
-          --log-group-name /ecs/$ECS_SERVICE_NAME_REPLACED \
-          --log-stream-name $LOG_STREAM \
-          --limit 10 \
-          --query "events[*].message" \
-          --output text
+          --services $ECS_SERVICE_NAME_CLEAN
