@@ -5,29 +5,41 @@ on:
     branches:
       - master
 
+env:
+  CONTAINER_NAME: "containervenlink"  # Defined once at workflow level
+  ECR_REPOSITORY: "venlink"          # ECR repository name
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3  # Updated to v3
+      uses: actions/checkout@v3
 
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2  # Updated to v2
+      uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}  # Note: Matches your secret name (typo preserved)
+        aws-region: ${{ secrets.AWS_REGION }}
 
     - name: Login to Amazon ECR
-      uses: aws-actions/amazon-ecr-login@v1  # More secure than CLI login
+      uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Build, tag, and push Docker image
+    - name: Build Docker image
       run: |
-        docker build -t ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:${{ github.sha }} .
-        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:${{ github.sha }}
-        echo "IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/venlink:${{ github.sha }}" >> $GITHUB_ENV
+        docker build -t ${{ env.CONTAINER_NAME }} .
+
+    - name: Tag Docker image
+      run: |
+        docker tag ${{ env.CONTAINER_NAME }}:latest \
+        ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+
+    - name: Push Docker image
+      run: |
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        echo "IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}" >> $GITHUB_ENV
 
   deploy:
     runs-on: ubuntu-latest
@@ -49,17 +61,8 @@ jobs:
 
     - name: Sanitize service name
       run: |
-        ECS_SERVICE_NAME_CLEAN=$(echo "$ECS_SERVICE_NAME" | tr ' ' '-' | tr '/' '-')
+        ECS_SERVICE_NAME_CLEAN=$(echo "$ECS_SERVICE_NAME" | tr ' ' '-' | tr '/' '-' | tr '_' '-')
         echo "ECS_SERVICE_NAME_CLEAN=$ECS_SERVICE_NAME_CLEAN" >> $GITHUB_ENV
-
-    - name: Get current task definition
-      id: get-task-definition
-      run: |
-        TASK_DEF_ARN=$(aws ecs describe-task-definition \
-          --task-definition $TASK_DEFINITION_NAME \
-          --query 'taskDefinition.taskDefinitionArn' \
-          --output text)
-        echo "TASK_DEF_ARN=$TASK_DEF_ARN" >> $GITHUB_ENV
 
     - name: Register new task definition
       run: |
@@ -71,21 +74,24 @@ jobs:
           --cpu 256 \
           --memory 512 \
           --requires-compatibilities FARGATE \
-          --container-definitions '[
-            {
-              "name": "containervenlink",
-              "image": "${{ env.IMAGE_URI }}",
+          --container-definitions "$(jq -n \
+            --arg image "${{ env.IMAGE_URI }}" \
+            --arg name "${{ env.CONTAINER_NAME }}" \
+            --arg region "${{ secrets.AWS_REGION }}" \
+            --arg log_group "/ecs/$ECS_SERVICE_NAME_CLEAN" \
+            '{
+              "name": $name,
+              "image": $image,
               "essential": true,
               "logConfiguration": {
                 "logDriver": "awslogs",
                 "options": {
-                  "awslogs-group": "/ecs/$ECS_SERVICE_NAME_CLEAN",
-                  "awslogs-region": "${{ secrets.AWS_REGION }}",
+                  "awslogs-group": $log_group,
+                  "awslogs-region": $region,
                   "awslogs-stream-prefix": "ecs"
                 }
               }
-            }
-          ]'
+            }')"
 
     - name: Deploy to ECS
       run: |
@@ -95,7 +101,7 @@ jobs:
           --task-definition $TASK_DEFINITION_NAME \
           --force-new-deployment
 
-    - name: Wait for service stabilization
+    - name: Verify deployment
       run: |
         aws ecs wait services-stable \
           --cluster $CLUSTER_NAME \
